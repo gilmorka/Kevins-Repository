@@ -1,0 +1,505 @@
+---
+title: "Deep (dish) Data Dive"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+date: "`r Sys.Date()`"
+---
+![](http://www.nohopizza.com/images/pizza.jpeg){width=400}
+
+
+
+## **Introduction**
+
+In the analysis of these 3 datasets, we are addressing average rating, location, and pricing information of various pizza establishments around the US. The goal is to assist the average American consumer in making informed decisions about which pizza restaurants they would like to patronize.
+
+### Data Introduction
+
+This analysis is based on 3 datasets with different information about pizza restaurants in the US:
+
+* **Barstool** - Contains critic, public and the barstool staff's rating as well as pricing, location and geolocation of the different pizza places. 
+
+* **Jared** - Contains ratings for New York pizza restaurants on a 6-point likert scale.
+
+* **Datafiniti** - Contains price range, location and keywords for pizza restaurants around the US.
+
+* **Region** - Contains state by region from the US Census Bureau
+
+To learn more about the datasets used, click [here](https://github.com/rfordatascience/tidytuesday/tree/master/data/2019/2019-10-01) or view a more detailed explanation in the Data Preparation section below.
+
+### Approach
+
+Our approach was to divide the analysis to focus on two groups of consumers: 1) those who are price-conscious and 2) those who are interested in finding the pizza place near them with the highest rating. 
+
+### Packages
+
+```{r warning = FALSE, message = FALSE}
+library(tidyverse) # data manipulation and cleaning
+library(knitr) # data dictionary tables
+library(kableExtra) # table formatting
+library(readxl) # importing dataset descriptions
+library(leaflet) # interactive map & geolocation
+```
+
+
+## **Data Dictionary**
+
+### Background
+
+The pizza data was originally compiled on September 30th, 2019 as a part of a social data project called [TidyTuesday](https://thomasmock.netlify.com/post/tidytuesday-a-weekly-social-data-project-in-r/). The original intent is for R users to practice their creativity and analytical techniques, specifically with the `tidyverse` package.
+
+For those who are interested, there's a [5-minute podcast](https://www.tidytuesday.com/7) reviewing the top entries and different visualization techniques for Week 7's project called "Pizza Party". 
+
+We created the regions dataset based on the definitions from the [US Census Bureau](https://en.wikipedia.org/wiki/File:Census_Regions_and_Division_of_the_United_States.svg).
+
+```{r echo = FALSE, warning = FALSE, message=FALSE}
+setwd("C:/Users/14408/Desktop/Data Wrangling")
+datafiniti <- read_csv("pizza_datafiniti.csv")
+barstool <- read_csv("pizza_barstool.csv")
+jared <- read_csv("pizza_jared.csv")
+region <- read_csv("us census bureau regions and divisions.csv")
+jared_desc <- read_excel("dataset_desc.xlsx", sheet = "Jared")
+barstool_desc <- read_excel("dataset_desc.xlsx", sheet = "Barstool")
+datafiniti_desc <- read_excel("dataset_desc.xlsx", sheet = "Jared")
+```
+
+### Data Dictionary
+
+
+#### Jared Dataset
+    
+```{r echo = FALSE}
+kable(jared_desc) %>% 
+    kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+#### Barstool Dataset
+    
+```{r echo = FALSE}
+kable(barstool_desc) %>% 
+   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+#### Datafiniti Dataset
+
+```{r echo = FALSE}
+kable(datafiniti_desc) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+## {.tabset}
+
+## **Data Preparation**
+
+#### NA Values
+
+```{r}
+colSums(is.na(barstool))
+colSums(is.na(jared))
+colSums(is.na(datafiniti))
+colSums(is.na(region))
+```
+### Jared & Barstool Cleaning
+
+#### Likert Scale Conversion
+
+The `jared` dataset pizza ratings are on a 1 to 6 likert scale. However, barstool is on a 1-10 scale. We used a `mutate` function to convert the 1-6 scale to a 1-10 scale:
+
+```{r}
+
+jared <- jared %>%
+  mutate(answer = case_when(
+    .$answer=="Never Again" ~ 0, 
+    .$answer=="Poor" ~ 2,
+    .$answer=="Fair" ~ 4,
+    .$answer=="Average" ~ 6,
+    .$answer=="Good"~ 8,
+    .$answer=="Excellent" ~ 10))
+
+jared$answer <- as.integer(jared$answer)
+str(jared$answer)
+
+```
+
+Once the answers are converted to integers, a calculation is done to find the average rating for each pizza place: 
+
+```{r}
+jared <- mutate(jared,Weighted_Rating = answer*votes)
+
+
+(Jared_Average <- jared %>%
+    group_by(place) %>%
+    summarise(avg_score = sum(Weighted_Rating)/sum(votes)))
+
+(Jared_Mean <- mean(Jared_Average$avg_score, na.rm = T))
+```
+
+Two columns are dropped for being insignificant:
+```{r eval = FALSE}
+jared$polla_qid = NULL
+jared$time = NULL
+head(jared)
+```
+
+This calculation takes the mean of average scores omiting the 0 values
+
+```{r}
+
+Critic_average <- mean(NA^(barstool$review_stats_critic_average_score == 0)*barstool$review_stats_critic_average_score, na.rm = TRUE)
+Daves_average <- mean(NA^(barstool$review_stats_dave_average_score == 0)*barstool$review_stats_dave_average_score, na.rm = TRUE)
+Community_average <- mean(NA^(barstool$review_stats_community_average_score == 0)*barstool$review_stats_community_average_score, na.rm = TRUE)
+```
+
+The three calculations below allow to compare to average scores found in the `barstool` dataset (Critic, Community and Barstool Staff (Dave)) with the scores in the `jared` dataset.
+
+
+Represents the values that are in both the `barstool` and `jared` datasets
+
+```{r echo = FALSE}
+intersect(barstool$name, jared$place)
+```
+
+### Datafiniti Cleaning
+
+Since there weren't any NA values in the `datafiniti` dataset, we simply removed duplicate values and changed the name of "province"" to "State Code" to align with the column name in the `region` dataset.
+
+```{r}
+# Remove duplicates
+
+datafiniti_unique <- unique(datafiniti)
+datafiniti_unique # 2,285 unique observations
+
+# rename province
+
+names(datafiniti_unique)[names(datafiniti_unique) == 'province'] <- 'State Code'
+```
+
+Our next task was to make sense of the categories column, which originally contained values in one column:
+
+```{r}
+head(datafiniti_unique$categories)
+```
+
+We accomplished this by:
+
+1. Creating a unique id for each pizza place
+
+```{r echo = FALSE, results = "show"}
+# Create a unique id
+
+datafiniti_unique <- cbind(loc_id = 1:nrow(datafiniti_unique), datafiniti_unique)
+head(datafiniti_unique[, 1:2])
+```
+
+2. Separating the different categories (separated by a comma) into individual columns
+
+```{r results = "hide", warning = FALSE}
+
+# Separate categories
+
+datafiniti_cat <- datafiniti_unique %>% separate(categories, c("Cat1", "Cat2", "Cat3", "Cat4","Cat5",
+                                                               "Cat6", "Cat7", "Cat8", "Cat9", "Cat10", 
+                                                               "Cat11"), sep = ",")
+```
+
+3. Creating a new dataframe with only the unique category id and separated categories
+
+```{r echo = FALSE, results = "show"}
+                                                               
+# New dataframe with categories & id
+
+datafiniti_cat <- datafiniti_cat[,c(1, 9:18)]
+head(datafiniti_cat)
+```
+
+4. Gathering the categories into one column and removing NA values
+
+```{r echo = FALSE, results = "show"}
+
+# gather categories
+
+datafiniti_cat <- 
+  datafiniti_cat %>% 
+  gather(Cat, Category, 2:11) %>% 
+  arrange(loc_id)
+
+# remove NA categories
+
+datafiniti_cat <- datafiniti_cat[!is.na(datafiniti_cat$Category), ]
+
+# remove Cat column
+
+datafiniti_cat <- datafiniti_cat[ , c(1,3)]
+
+head(datafiniti_cat)
+```
+
+5. Shrinking the list into unique values
+
+```{r}
+# unique categories w/ count
+
+datafiniti_cat %>% 
+  group_by(Category) %>% 
+  summarize(count = n()) %>% 
+  arrange(desc(count))
+
+```
+
+6. Repeating steps 2-5, separating this time on the word "and". This allowed us to further separate categories such as "Italian Restaurant and Pizza Place" into their own values.
+
+```{r echo = FALSE, results = "show", warning = FALSE}
+
+# Separate again on "and"
+
+datafiniti_cat <- datafiniti_cat %>% separate(Category, c("Cat1", "Cat2", "Cat3", "Cat4","Cat5"), 
+                                                          sep = c("and"))
+
+#nrow(datafiniti_cat) - sum(is.na(datafiniti_cat$Cat1))
+#nrow(datafiniti_cat) - sum(is.na(datafiniti_cat$Cat2))
+#nrow(datafiniti_cat) - sum(is.na(datafiniti_cat$Cat3))
+#nrow(datafiniti_cat) - sum(is.na(datafiniti_cat$Cat4))
+
+# gather categories
+
+datafiniti_cat <- 
+  datafiniti_cat %>% 
+  gather(Cat, Category, 2:6) %>% 
+  arrange(loc_id)
+
+# remove NA categories
+
+datafiniti_cat <- datafiniti_cat[!is.na(datafiniti_cat$Category), ]
+
+# remove Cat column
+
+datafiniti_cat <- datafiniti_cat[ , c(1,3)]
+
+# unique categories w\ count
+
+datafiniti_cat %>% 
+  group_by(Category) %>% 
+  summarize(count = n()) %>% 
+  arrange(desc(count))
+
+#unique(datafiniti_cat$Category)
+
+
+```
+
+6. Cleaning and consolidating into 10 main categories and an "Other" category containing descriptions with < 10 records each.
+
+```{r echo = FALSE, results = "show"}
+
+# Clean \ combine categories using str_detect
+
+datafiniti_combcat <- 
+datafiniti_cat %>% 
+ mutate(Clean_cat = case_when(str_detect(Category, regex("Pizza Restaurant", ignore_case = T)) ~ "Pizza Restaurant",
+                               str_detect(Category, regex("Italian", ignore_case = T)) ~ "Italian",
+                               str_detect(Category, regex("American", ignore_case = T)) ~ "American",
+                               str_detect(Category, regex("Bar", ignore_case = T)) |
+                                 str_detect(Category, regex("Pub", ignore_case = T)) ~ "Bar / Pub",
+                               str_detect(Category, regex("wich", ignore_case = T)) ~ "Sandwich Place",
+                               str_detect(Category, regex("cater", ignore_case = T)) ~ "Caterer",
+                               str_detect(Category, regex("karaoke", ignore_case = T)) ~ "Karaoke",
+                               str_detect(Category, regex("Carry-out", ignore_case = T)) |
+                                 str_detect(Category, regex("Delivery", ignore_case = T)) ~ "Delivery / Carry-out",
+                               str_detect(Category, regex("Pizza", ignore_case = T)) ~ "Pizza Place",
+                               str_detect(Category, regex("Restaurant", ignore_case = T)) ~ "Restaurant",
+                               TRUE ~ "Other")) %>% 
+  filter(Category != "S" & Category != " S" & Category != "" & Category != " ") %>% 
+  group_by(Clean_cat) %>% 
+  summarize(count = n()) %>% 
+  arrange(desc(count))
+
+kable(datafiniti_combcat) %>% 
+   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+# Decided to put anything with < 10 records in "Other"
+
+datafiniti_cat <- 
+  datafiniti_cat %>% 
+  mutate(Clean_cat = case_when(str_detect(Category, regex("Pizza Restaurant", ignore_case = T)) ~ "Pizza Restaurant",
+                               str_detect(Category, regex("Italian", ignore_case = T)) ~ "Italian",
+                               str_detect(Category, regex("American", ignore_case = T)) ~ "American",
+                               str_detect(Category, regex("Bar", ignore_case = T)) |
+                                 str_detect(Category, regex("Pub", ignore_case = T)) ~ "Bar / Pub",
+                               str_detect(Category, regex("wich", ignore_case = T)) ~ "Sandwich Place",
+                               str_detect(Category, regex("cater", ignore_case = T)) ~ "Caterer",
+                               str_detect(Category, regex("karaoke", ignore_case = T)) ~ "Karaoke",
+                               str_detect(Category, regex("Carry-out", ignore_case = T)) |
+                                 str_detect(Category, regex("Delivery", ignore_case = T)) ~ "Delivery / Carry-out",
+                               str_detect(Category, regex("Pizza", ignore_case = T)) ~ "Pizza Place",
+                               str_detect(Category, regex("Restaurant", ignore_case = T)) ~ "Restaurant",
+                               TRUE ~ "Other")) %>% 
+  filter(Category != "S" & Category != " S" & Category != "" & Category != " ")
+
+kable(head(datafiniti_cat, 10)) %>% 
+   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+#rename category
+
+names(datafiniti_cat)[names(datafiniti_cat) == 'Clean_cat'] <- 'new_cat'
+
+```
+
+7. Merging with the original dataset to end up with a row for each pizza place & category for analysis by category
+
+```{r}
+
+# merge w\ new categories & delete original categories
+
+datafiniti_new <- merge(datafiniti_unique, datafiniti_cat, by = 'loc_id') 
+datafiniti_new <- datafiniti_new %>% 
+  select(-c(categories, Category))
+
+datafiniti_new <- unique(datafiniti_new)
+
+kable(head(select(datafiniti_new, c(loc_id, name, new_cat)), 10)) %>% 
+   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+## {.tabset}
+
+## **Exploratory Analysis**
+
+First, we looked at a brief overview of prices by category:
+
+```{r}
+datafiniti_new %>% 
+  group_by(new_cat) %>% 
+  summarize(Avg_Min_Price = mean(price_range_min), Avg_Max_Price = mean(price_range_max)) %>% 
+  mutate(Range = Avg_Max_Price - Avg_Min_Price) %>% 
+  arrange(Avg_Min_Price)
+
+```
+
+Next, we delved a little deeper into the pricing structure:
+
+```{r}
+
+# Price Exploration -------------------------------------------------------
+
+# min \ max summary
+
+summary(datafiniti_unique$price_range_min) # 3rd quartile is still 0
+summary(datafiniti_unique$price_range_max) # ranges from 7 to 55
+
+# create spread variable
+
+datafiniti_unique <- datafiniti_unique %>% 
+  mutate(Range = price_range_max - price_range_min)
+
+datafiniti_new <- datafiniti_new %>% 
+  mutate(Range = price_range_max - price_range_min)
+
+summary(datafiniti_unique$Range)
+summary(datafiniti_new$Range)
+
+# histogram for each
+
+datafiniti_unique %>% 
+  ggplot(aes(x = price_range_min)) +
+  geom_histogram(binwidth = 2) +
+  coord_cartesian(xlim = c(0,40))  
+
+datafiniti_unique %>% 
+  ggplot(aes(x = price_range_max)) +
+  geom_histogram(binwidth = 2) +
+  coord_cartesian(xlim = c(20,55))
+
+datafiniti_unique %>% 
+  ggplot(aes(x = Range)) +
+  geom_histogram(binwidth = 2) +
+  coord_cartesian(xlim = c(10,30))
+
+# boxplot for each
+
+datafiniti_new %>% 
+  ggplot(aes(x = new_cat, y = price_range_min)) +
+  geom_boxplot() +
+  coord_flip()
+
+datafiniti_new %>% 
+  ggplot(aes(x = new_cat, y = price_range_max)) +
+  geom_boxplot() +
+  coord_flip()
+
+datafiniti_new %>% 
+  ggplot(aes(x = new_cat, y = Range)) +
+  geom_boxplot() +
+  coord_flip()
+
+```
+
+```{r}
+
+# Price by Region / State ------------------------------------------------------------------
+
+# add Region to datafiniti_unique
+
+datafiniti_unique <- 
+  datafiniti_unique %>% 
+  merge(region, by = "State Code") %>% 
+  select(-(Division))
+
+# Min / max by region
+
+datafiniti_unique %>% 
+  group_by(Region) %>% 
+  summarize(Avg_min_price = mean(price_range_min),
+            Avg_max_price = mean(price_range_max))
+
+# Min / max by state
+
+datafiniti_unique %>% 
+  group_by(State) %>% 
+  summarize(Avg_max_price = mean(price_range_max)) %>% 
+  arrange(desc(Avg_max_price))
+
+datafiniti_unique %>% 
+  group_by(State) %>% 
+  summarize(Avg_min_price = mean(price_range_min)) %>% 
+  arrange(Avg_min_price)
+
+```
+
+### Barstool Restaurant Locations
+
+ Locations of the restaurants in the `barstool` dataset 
+
+```{r warning = FALSE}
+m <- leaflet(barstool) %>% addTiles()
+m %>% addCircles(lng = ~ barstool$longitude, lat = ~ barstool$latitude, popup = barstool$nameL, weight = 8, color = "#fb3004", stroke = TRUE)
+```
+
+This map shows the barstool restaurants which have been reviewed. The circles make it easy to portray a visual of where most reviews are from. For example, zooming in on New York will show hundreds of restaurants. 
+
+### Datafiniti Point Plot
+
+``` {r} 
+ggplot(data = datafiniti, aes(x=price_range_max,y=price_range_min)) + 
+  geom_point(color = "blue", size=2,shape=17) 
+```
+
+The three calculations below allow to compare to average scores found in the `barstool` dataset (Critic, Community and Barstool Staff (Dave)) with the scores in the `jared` dataset.
+
+```{r}
+Pizza_Averages <- c("Dave (Barstool)","Community","Critic","Jared")
+y <- c(6.622,7.0846,7.256,6.802)
+barplot(y,names.arg = Pizza_Averages,xlab = "Average Review",ylab = "Rating",col = "blue", main = "Pizza Averages")
+
+```
+
+## {.tabset}
+
+## **Summary**
+
+Our goal was to educate consumers on how they want to spend their money in the pizza industry. We looked at ratings between the barstool and jared datasets, which concluded that the jared pizza average was higher than barstool.The barstool map was shown to see where most restaraunts are. In the datafiniti set we looked at price range and location, which concludes the West has the highest price value. In terms of states, Conneticut has the highest average max price. The median price range is $25. 
+
+
+
+
+
