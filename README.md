@@ -5,7 +5,8 @@ The above files include my work at the University of Cincinnati during my Master
 **Appendix**
 
 **Statistical Modeling - Linear Regression Modeling** - Includes data exploration, cleaning, identifying response variables, regression using single factors, checking collinearity, and automated algorithms. 
-http://rpubs.com/KGilmore_/567851
+Part 1: http://rpubs.com/KGilmore_/567851
+Part 2: https://rpubs.com/KGilmore_/573126
 
 **Pizza_Data_Project.rmd above.** - Data Wrangling - (R Final Project) data is a project of data cleaning, preparation, visualizaton, and then summary of pizza reviews and ratings across the country. I have published the data into an HTML file:
 http://rpubs.com/KGilmore_/556040
