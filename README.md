@@ -1,6 +1,6 @@
 ### Kevins-Repository
 
-The above files include my work at the University of Cincinnati during my Master's degree in Business Analytics. 
+The above files include a fraction of my work at the University of Cincinnati during my Master's degree in Business Analytics. 
 
 **Appendix**
 
