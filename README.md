@@ -12,7 +12,7 @@ Part 3: file:///C:/Users/14408/Desktop/Stat%20Modeling/part3.html
 **Pizza_Data_Project.rmd above.** - Data Wrangling - (R Final Project) data is a project of data cleaning, preparation, visualizaton, and then summary of pizza reviews and ratings across the country. I have published the data into an HTML file:
 http://rpubs.com/KGilmore_/556040
 
-**Capstone Report ** - 
+**Capstone Report**  - My capstone report is a continuation of the Pizza data project. Both linear and nonlinear models were examined to select the best model in my dataset. Training and testing subsets were created and model comparison was examined with mathematical values of MSE, R-Squared, Adjusted R-Squared, AIC, and BIC. I used the LASSO method, Random Forest, and Boosting for Regression Trees.  
 
 **Combined Code_probability** - The R file is the code for a probability modeling class project while the word doc includes the output and explanation. 
 
